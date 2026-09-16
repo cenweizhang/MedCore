@@ -53,7 +53,6 @@ class Sam(nn.Module):
     def device(self) -> Any:
         return self.pixel_mean.device
 
-    @torch.no_grad()
     def forward(
         self,
         batched_input: List[Dict[str, Any]],
@@ -61,8 +60,6 @@ class Sam(nn.Module):
     ) -> List[Dict[str, torch.Tensor]]:
         """
         Predicts masks end-to-end from provided images and prompts.
-        If prompts are not known in advance, using SamPredictor is
-        recommended over calling the model directly.
 
         Arguments:
           batched_input (list(dict)): A list over input images, each a

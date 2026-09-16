@@ -6,7 +6,6 @@
 # LICENSE file in the root directory of this source tree.
 from functools import partial
 from pathlib import Path
-import urllib.request
 import torch
 
 from .modeling import (
@@ -18,30 +17,8 @@ from .modeling import (
 )
 
 
-def build_sam_vit_h(checkpoint=None):
-    return _build_sam(
-        encoder_embed_dim=1280,
-        encoder_depth=32,
-        encoder_num_heads=16,
-        encoder_global_attn_indexes=[7, 15, 23, 31],
-        checkpoint=checkpoint,
-    )
-
-
-build_sam = build_sam_vit_h
-
-
-def build_sam_vit_l(checkpoint=None):
-    return _build_sam(
-        encoder_embed_dim=1024,
-        encoder_depth=24,
-        encoder_num_heads=16,
-        encoder_global_attn_indexes=[5, 11, 17, 23],
-        checkpoint=checkpoint,
-    )
-
-
 def build_sam_vit_b(checkpoint=None):
+    """Build the ViT-B architecture used by MedSAM and optionally load weights."""
     return _build_sam(
         encoder_embed_dim=768,
         encoder_depth=12,
@@ -52,9 +29,6 @@ def build_sam_vit_b(checkpoint=None):
 
 
 sam_model_registry = {
-    "default": build_sam_vit_h,
-    "vit_h": build_sam_vit_h,
-    "vit_l": build_sam_vit_l,
     "vit_b": build_sam_vit_b,
 }
 
@@ -107,40 +81,8 @@ def _build_sam(
         pixel_std=[58.395, 57.12, 57.375],
     )
     sam.eval()
-    checkpoint = Path(checkpoint)
-    if checkpoint.name == "sam_vit_b_01ec64.pth" and not checkpoint.exists():
-        cmd = input("Download sam_vit_b_01ec64.pth from facebook AI? [y]/n: ")
-        if len(cmd) == 0 or cmd.lower() == "y":
-            checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            print("Downloading SAM ViT-B checkpoint...")
-            urllib.request.urlretrieve(
-                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
-                checkpoint,
-            )
-            print(checkpoint.name, " is downloaded!")
-    elif checkpoint.name == "sam_vit_h_4b8939.pth" and not checkpoint.exists():
-        cmd = input("Download sam_vit_h_4b8939.pth from facebook AI? [y]/n: ")
-        if len(cmd) == 0 or cmd.lower() == "y":
-            checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            print("Downloading SAM ViT-H checkpoint...")
-            urllib.request.urlretrieve(
-                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-                checkpoint,
-            )
-            print(checkpoint.name, " is downloaded!")
-    elif checkpoint.name == "sam_vit_l_0b3195.pth" and not checkpoint.exists():
-        cmd = input("Download sam_vit_l_0b3195.pth from facebook AI? [y]/n: ")
-        if len(cmd) == 0 or cmd.lower() == "y":
-            checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            print("Downloading SAM ViT-L checkpoint...")
-            urllib.request.urlretrieve(
-                "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
-                checkpoint,
-            )
-            print(checkpoint.name, " is downloaded!")
-
     if checkpoint is not None:
-        with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f, map_location=torch.device('cpu'))
-        sam.load_state_dict(state_dict)
+        state_dict = torch.load(Path(checkpoint), map_location="cpu", weights_only=True)
+        sam.load_state_dict(state_dict, strict=True)
+    sam._medcore_model_type = "vit_b"
     return sam

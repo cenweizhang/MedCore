@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use MedCore, please cite the accompanying paper."
+title: "MedCore: Boundary-Preserving Medical Core Pruning for MedSAM"
+type: software
+authors:
+  - family-names: Zhang
+    given-names: Cenwei
+  - family-names: Xiang
+    given-names: Suncheng
+  - family-names: You
+    given-names: Lei
+repository-code: "https://github.com/cenweizhang/MedCore"
+license: Apache-2.0
+preferred-citation:
+  type: article
+  title: "MedCore: Boundary-Preserving Medical Core Pruning for MedSAM"
+  authors:
+    - family-names: Zhang
+      given-names: Cenwei
+    - family-names: Xiang
+      given-names: Suncheng
+    - family-names: You
+      given-names: Lei
+  year: 2026
+  journal: arXiv
+  doi: "10.48550/arXiv.2605.13688"
+  url: "https://arxiv.org/abs/2605.13688"

@@ -1,0 +1,21 @@
+{
+  "checkpoint": "outputs/multimodal_stage1/checkpoint.pth",
+  "sam_ckpt": "checkpoints/sam_vit_b_01ec64.pth",
+  "head_sparsity": 0.10,
+  "mlp_sparsity": 0.117,
+  "min_keep_heads": 1,
+  "min_keep_mlp_fraction": 0.05,
+  "boundary_fisher_weight": 3,
+  "dist_beta": 0.3,
+  "recovery_steps": 100,
+  "recovery_lr": 0.00001,
+  "feat_distill_weight": 0.5,
+  "boundary_loss_weight": 1,
+  "logit_distill_weight": 2,
+  "freq_pred_loss_weight": 0.5,
+  "seed": 42,
+  "device": "cuda:0",
+  "num_workers": 0,
+  "eval_batch_size": 1,
+  "output_dir": "outputs/multimodal_last_blocks"
+}

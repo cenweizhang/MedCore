@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "medcore-pruning"
+version = "0.1.0"
+description = "Boundary-preserving structured pruning for MedSAM"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Cenwei Zhang"},
+    {name = "Suncheng Xiang"},
+    {name = "Lei You"},
+]
+dependencies = [
+    "torch>=2.3",
+    "numpy",
+    "scipy",
+    "scikit-image",
+    "imageio>=2.31",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+cpu = ["torch==2.8.0"]
+cu128 = ["torch==2.8.0"]
+
+[project.urls]
+Paper = "https://arxiv.org/abs/2605.13688"
+Repository = "https://github.com/cenweizhang/MedCore"
+
+[tool.setuptools]
+license-files = ["LICENSE", "licenses/*", "THIRD_PARTY_NOTICES.md"]
+
+[tool.setuptools.packages.find]
+include = ["medcore_pruning*", "segment_anything*"]
+
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu128" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

@@ -256,13 +256,16 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         x = (attn @ v).view(B, self.num_heads, H, W, -1)  # (B, nHead, H, W, head_dim)
 
-        # === Head mask: zero out pruned heads BEFORE proj ===
+        # Apply the head mask before projecting back to the residual width.
         if self.head_mask is not None:
             # head_mask shape: (num_heads,) -> (1, num_heads, 1, 1, 1)
-            mask = self.head_mask.view(1, self.num_heads, 1, 1, 1)
+            mask = self.head_mask.to(device=x.device, dtype=x.dtype).view(
+                1, self.num_heads, 1, 1, 1
+            )
             x = x * mask
 
-        x = x.permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)  # (B, H, W, dim)
+        # The attention width can shrink after physical head pruning.
+        x = x.permute(0, 2, 3, 1, 4).reshape(B, H, W, -1)
         x = self.proj(x)
 
         return x
