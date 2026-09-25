@@ -1,6 +1,6 @@
 # Method overview
 
-MedCore prunes the image encoder of **MedSAM ViT-B**, using the pretrained **SAM ViT-B** weights as a reference for medical adaptation. The method preserves segmentation quality and boundaries while reducing attention and MLP computation. See the [paper](../document/MedCore_paper.pdf) for the derivation.
+MedCore prunes the image encoder of **MedSAM ViT-B**, using the pretrained **SAM ViT-B** weights as a reference for medical adaptation. The method preserves segmentation quality and boundaries while reducing attention and MLP computation. See the paper for the derivation.
 
 ## Structured groups
 
