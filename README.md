@@ -2,7 +2,7 @@
 
 Implementation of **MedCore: Boundary-Preserving Medical Core Pruning for MedSAM**. MedCore combines boundary-aware importance scores, medical adaptation relative to SAM, and short recovery to prune attention heads and MLP channels in the MedSAM ViT-B image encoder.
 
-[Paper](document/MedCore_paper.pdf) | [Method overview](docs/METHOD.md)
+[Method overview](docs/METHOD.md)
 
 ## Repository
 
@@ -180,15 +180,4 @@ python evaluate.py --checkpoint outputs/polyp_last_blocks_compact.pth --output o
 
 Evaluation uses the recorded test partition by default and reports Dice, IoU, Boundary F1, and HD95 in resized-image pixels, with per-dataset and macro averages. Dense masked checkpoints can be evaluated with the same command. Keep the held-out test partition separate from configuration and checkpoint selection.
 
-## Citation and license
 
-```bibtex
-@article{zhang2026medcore,
-  title={MedCore: Boundary-Preserving Medical Core Pruning for MedSAM},
-  author={Zhang, Cenwei and Xiang, Suncheng and You, Lei},
-  journal={arXiv preprint arXiv:2605.13688},
-  year={2026}
-}
-```
-
-Released under [Apache-2.0](LICENSE). See [third-party notices](THIRD_PARTY_NOTICES.md) for SAM and MedSAM attribution.
