@@ -15,7 +15,12 @@ def build_parser():
     parser.add_argument("--dataset_names", nargs="+")
     parser.add_argument("--output_dir", default="outputs/finetune")
     parser.add_argument("--num_epochs", type=int, default=20)
-    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=2,
+                        help="Images per forward/backward pass. The reference is 2 because a batch of 4 "
+                             "in one pass runs out of memory on a 24 GB RTX 4090 (about 35 GB needed).")
+    parser.add_argument("--grad_accum_steps", type=int, default=2,
+                        help="Batches accumulated per optimizer step; the effective batch is "
+                             "batch_size * grad_accum_steps (reference: 2 x 2 = 4).")
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--grad_clip", type=float, default=1.0)
@@ -31,6 +36,8 @@ def main(argv=None):
         raise ValueError("Provide --checkpoint or --resume.")
     if min(args.num_epochs, args.batch_size, args.eval_batch_size) < 1 or args.lr <= 0:
         raise ValueError("Epochs, batch sizes and learning rate must be positive.")
+    if args.batch_size < 1 or args.grad_accum_steps < 1:
+        raise ValueError("batch_size and grad_accum_steps must be at least 1.")
     if args.patience < 0 or args.weight_decay < 0 or args.grad_clip <= 0:
         raise ValueError("Invalid optimizer or early-stopping settings.")
 
@@ -54,9 +61,10 @@ def main(argv=None):
         resume_path = Path(args.resume)
         resume = torch.load(resume_path, map_location="cpu", weights_only=True)
         source = resume_path.parent / "checkpoint_latest.pth"
-        for key in ("num_epochs", "batch_size", "lr", "weight_decay", "use_amp", "seed"):
-            if resume["config"][key] != getattr(args, key):
-                raise ValueError(f"Resume requires the original {key}={resume['config'][key]}.")
+        for key in ("num_epochs", "batch_size", "grad_accum_steps", "lr", "weight_decay", "use_amp", "seed"):
+            original = resume["config"].get(key, 1 if key == "grad_accum_steps" else None)
+            if original != getattr(args, key):
+                raise ValueError(f"Resume requires the original {key}={original}.")
     else:
         source = Path(args.checkpoint)
     payload = load_checkpoint(source)
@@ -108,7 +116,8 @@ def main(argv=None):
     for epoch in range(start, args.num_epochs):
         if args.patience and patience_count >= args.patience:
             break
-        train_loss = run_epoch(model, [loaders["train_loader"]], device, optimizer, scaler, args.grad_clip)
+        train_loss = run_epoch(model, [loaders["train_loader"]], device, optimizer, scaler, args.grad_clip,
+                               grad_accum_steps=args.grad_accum_steps)
         val_loss = run_epoch(model, loaders["val_loaders"], device)
         scheduler.step()
         history.append({"epoch": epoch + 1, "train_loss": train_loss, "val_loss": val_loss})

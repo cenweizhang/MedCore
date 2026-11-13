@@ -1,5 +1,5 @@
 {
-  "checkpoint": "outputs/polyp_stage1/checkpoint.pth",
+  "checkpoint": "outputs/polyp_stage1_ft/checkpoint_best.pth",
   "sam_ckpt": "checkpoints/sam_vit_b_01ec64.pth",
   "head_sparsity": 0.10,
   "mlp_sparsity": 0.117,
@@ -7,6 +7,7 @@
   "min_keep_mlp_fraction": 0.05,
   "boundary_fisher_weight": 3,
   "dist_beta": 0.3,
+  "recompute_mlp_scores": true,
   "recovery_steps": 100,
   "recovery_lr": 0.00001,
   "feat_distill_weight": 0.5,
@@ -15,7 +16,7 @@
   "freq_pred_loss_weight": 0.5,
   "seed": 42,
   "device": "cuda:0",
-  "num_workers": 0,
+  "num_workers": 12,
   "eval_batch_size": 1,
   "output_dir": "outputs/polyp_last_blocks"
 }

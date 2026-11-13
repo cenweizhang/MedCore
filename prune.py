@@ -42,6 +42,9 @@ def build_parser(last_blocks=False):
     parser.add_argument("--boundary_loss_weight", type=float, default=1.0)
     parser.add_argument("--logit_distill_weight", type=float, default=2.0)
     parser.add_argument("--freq_pred_loss_weight", type=float, default=0.5)
+    parser.add_argument("--teacher_device", choices=["cuda", "cpu"], default="cuda",
+                        help="Device of the recovery teacher: 'cuda' keeps it on the pruning device "
+                             "(faster, about 0.4 GB more GPU memory); 'cpu' saves GPU memory.")
     parser.add_argument("--output_dir", default="outputs/last_blocks" if last_blocks else "outputs/medcore")
     add_runtime_args(parser)
     return parser
@@ -160,7 +163,8 @@ def run_pruning(args, last_blocks=False):
     model.to(device).eval()
     teacher = None
     if args.recovery_steps and (args.feat_distill_weight or args.logit_distill_weight):
-        teacher = copy.deepcopy(model).cpu().eval()
+        teacher_device = device if args.teacher_device == "cuda" else torch.device("cpu")
+        teacher = copy.deepcopy(model).to(teacher_device).eval()
         if last_blocks:
             attach_masks(teacher, previous_heads, previous_neurons)
         for parameter in teacher.parameters():

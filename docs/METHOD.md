@@ -50,7 +50,7 @@ The [multimodal configuration](../configs/multimodal_stage1.json) applies this a
 
 ## Cascade and recovery
 
-The pruning sequence is **attention heads -> recovery -> MLP channels -> recovery**. Calibration data drive both scoring and short recovery. MLP scores may be recomputed after head recovery with `--recompute_mlp_scores`.
+The pruning sequence is **attention heads -> recovery -> MLP channels -> recovery**. Calibration data drive both scoring and short recovery. After head recovery, MLP Fisher information and scores are recomputed on the recovered model (`--recompute_mlp_scores`, enabled in the polyp configurations).
 
 $$
 \mathcal{L}_{\mathrm{rec}}=\mathcal{L}_{\mathrm{seg}}
@@ -60,13 +60,13 @@ $$
  +\lambda_4\mathcal{L}_{\mathrm{freq}}.
 $$
 
-Recovery combines Dice + BCE, boundary supervision, feature and boundary-logit distillation from the checkpoint at the start of the current pruning run, and high-frequency prediction error. Calibration sampling favors masks with higher boundary complexity. All image-encoder parameters can update during recovery, including those in blocks protected from new pruning. Optional fine-tuning uses the full training partition with Dice + BCE and selects a checkpoint by validation loss.
+Recovery combines Dice + BCE, boundary supervision, feature and boundary-logit distillation from the checkpoint at the start of the current pruning run (the teacher runs on the GPU by default, or on the CPU with `--teacher_device cpu`), and high-frequency prediction error. Calibration sampling favors masks with higher boundary complexity. All image-encoder parameters can update during recovery, including those in blocks protected from new pruning. Optional fine-tuning uses the full training partition with Dice + BCE and selects a checkpoint by validation loss.
 
 Training checkpoints contain recovered weights, pruning masks, and dataset membership. Export removes masked attention and MLP dimensions and stores the compact architecture. Evaluation uses the held-out test partition and the metrics described in the [README](../README.md#evaluation).
 
 ## Sequential pruning
 
-`prune.py` starts from the unpruned MedSAM checkpoint and protects blocks 10-11 by default. `prune_last_blocks.py` starts from its dense recovered checkpoint, retains both attention and MLP masks in blocks 0-9, and allocates new pruning only to blocks 10-11. The source must contain explicit masks and an embedded dataset split, with both final blocks still unpruned. Existing masks remain active during scoring, recovery, and checkpoint saving; previously removed groups cannot return.
+`prune.py` starts from the unpruned MedSAM checkpoint and protects blocks 10-11 by default. `prune_last_blocks.py` starts from the fine-tuned first-stage checkpoint (`outputs/polyp_stage1_ft/checkpoint_best.pth` in the polyp configuration), retains both attention and MLP masks in blocks 0-9, and allocates new pruning only to blocks 10-11. The source must contain explicit masks and an embedded dataset split, with both final blocks still unpruned. Existing masks remain active during scoring, recovery, and checkpoint saving; previously removed groups cannot return.
 
 Each entry runs the same head-to-MLP cascade and saves its own checkpoint in a separate output directory. The continuation reuses the source calibration membership and, unless overridden, its dataset mixture weights. Its teacher is the masked model at the start of that continuation. Keep the dense checkpoint until all pruning and fine-tuning are complete, then export either result.
 

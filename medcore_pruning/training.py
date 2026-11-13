@@ -28,11 +28,41 @@ def segmentation_loss(logits, target):
     return dice + F.binary_cross_entropy_with_logits(logits.float(), target)
 
 
-def run_epoch(model, loaders, device, optimizer=None, scaler=None, grad_clip=1.0):
-    """Return the sample-weighted loss over one training or validation epoch."""
+def _accumulated_step(model, optimizer, scaler, grad_clip, n_samples):
+    """Average gradients summed over n_samples, then clip and take one optimizer step."""
+    if scaler is not None:
+        scaler.unscale_(optimizer)
+    for parameter in model.parameters():
+        if parameter.grad is not None:
+            parameter.grad.div_(n_samples)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+    if scaler is not None:
+        scaler.step(optimizer)
+        scaler.update()
+    else:
+        optimizer.step()
+    optimizer.zero_grad(set_to_none=True)
+
+
+def run_epoch(model, loaders, device, optimizer=None, scaler=None, grad_clip=1.0, grad_accum_steps=1):
+    """Return the sample-weighted loss over one training or validation epoch.
+
+    With grad_accum_steps > 1, gradients of grad_accum_steps consecutive batches
+    are accumulated before one optimizer step. Each batch loss is weighted by its
+    number of samples and the sum is divided by the samples in the group, so the
+    update equals that of one batch of batch_size * grad_accum_steps (the loss is a
+    per-sample mean and the model has no batch normalization). Gradient clipping
+    is applied to the averaged gradient, as for the larger batch.
+    """
     training = optimizer is not None
+    if grad_accum_steps < 1:
+        raise ValueError("grad_accum_steps must be at least 1.")
+    accumulate = training and grad_accum_steps > 1
     model.train(training)
     total, count = 0.0, 0
+    group_batches = group_samples = 0
+    if accumulate:
+        optimizer.zero_grad(set_to_none=True)
     for loader in loaders:
         for batch in tqdm(loader, desc="Train" if training else "Validate", leave=False):
             target = batch["mask_256"].to(device).float()
@@ -41,7 +71,15 @@ def run_epoch(model, loaders, device, optimizer=None, scaler=None, grad_clip=1.0
                     loss = segmentation_loss(segmentation_logits(model, batch, device), target)
                 if not torch.isfinite(loss):
                     raise RuntimeError("Non-finite loss; check input data and training settings.")
-                if training:
+                if accumulate:
+                    weighted = loss * len(target)
+                    (scaler.scale(weighted) if scaler is not None else weighted).backward()
+                    group_batches += 1
+                    group_samples += len(target)
+                    if group_batches == grad_accum_steps:
+                        _accumulated_step(model, optimizer, scaler, grad_clip, group_samples)
+                        group_batches = group_samples = 0
+                elif training:
                     optimizer.zero_grad(set_to_none=True)
                     if scaler is not None:
                         scaler.scale(loss).backward()
@@ -56,6 +94,8 @@ def run_epoch(model, loaders, device, optimizer=None, scaler=None, grad_clip=1.0
                         optimizer.step()
             total += float(loss.detach()) * len(target)
             count += len(target)
+    if accumulate and group_batches:
+        _accumulated_step(model, optimizer, scaler, grad_clip, group_samples)  # last, smaller group
     if not count:
         raise ValueError("An empty data loader cannot be trained or evaluated.")
     return total / count
