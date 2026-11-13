@@ -84,7 +84,7 @@ Masks must encode background and foreground as 0/1 or 0/255. Images are resized 
 
 The polyp configurations use three endoscopy datasets. The [multimodal workflow](#multimodal-pruning) combines endoscopy, ultrasound, and dermoscopy in one pruned model. Dataset files and pretrained weights are downloaded separately.
 
-The default split is approximately 60% training, 20% validation, and 20% test, with 128 calibration images drawn from each training partition. Dataset membership is saved in `splits.json` and embedded in the checkpoint. Reuse the manifest for related experiments; use `--data_roots` in the same dataset order when relocating files. These example settings do not by themselves guarantee reproduction of the paper's reported numbers.
+The default split is approximately 60% training, 20% validation, and 20% test, with 128 calibration images drawn from the training partitions of the polyp configurations (26 from CVC-ClinicDB, 38 from CVC-ColonDB, and 64 from Kvasir-SEG). Dataset membership is saved in `splits.json` and embedded in the checkpoint. Reuse the manifest for related experiments; use `--data_roots` in the same dataset order when relocating files. These example settings do not by themselves guarantee reproduction of the paper's reported numbers.
 
 ## Pruning
 
@@ -94,14 +94,15 @@ Run a single cascade with the standard polyp settings:
 python prune.py --config configs/polyp.json
 ```
 
-For sequential pruning, run the two entries in order:
+For sequential pruning, prune blocks 0-9, fine-tune that checkpoint, and then prune blocks 10-11 from the fine-tuned model:
 
 ```bash
 python prune.py --config configs/polyp_stage1.json
+python finetune.py --checkpoint outputs/polyp_stage1/checkpoint.pth --output_dir outputs/polyp_stage1_ft --num_epochs 20
 python prune_last_blocks.py --config configs/polyp_last_blocks.json
 ```
 
-The first command prunes blocks 0-9 and saves `outputs/polyp_stage1/checkpoint.pth`. The second loads those recovered weights and masks, preserves the masks of blocks 0-9, and prunes blocks 10-11. It writes a separate `outputs/polyp_last_blocks/checkpoint.pth`. Block indices are zero-based. Protected blocks are excluded from new pruning; their encoder parameters can still update during recovery.
+The first command prunes blocks 0-9 and saves `outputs/polyp_stage1/checkpoint.pth`. The second fine-tunes it with all masks attached and saves `outputs/polyp_stage1_ft/checkpoint_best.pth`. The third loads the fine-tuned weights and masks, preserves the masks of blocks 0-9, and prunes blocks 10-11. It writes a separate `outputs/polyp_last_blocks/checkpoint.pth`, which is fine-tuned again before export (see [Fine-tuning and export](#fine-tuning-and-export)). Block indices are zero-based. Protected blocks are excluded from new pruning; their encoder parameters can still update during recovery.
 
 Both commands use **head pruning -> recovery -> MLP pruning -> recovery**, and save weights, masks, configuration, split membership, scores, and validation metrics. The continuation reuses the first checkpoint's calibration membership and dataset mixture weights. It requires a dense masked checkpoint whose final two blocks have not yet been pruned. No intermediate mask-conversion step is needed.
 
@@ -113,11 +114,39 @@ Both commands use **head pruning -> recovery -> MLP pruning -> recovery**, and s
 | 0.12 | 0.14 | 72% heads, 84% MLP channels |
 | 0.14 | 0.158 | 84% heads, 95% MLP channels |
 
-These are aggregate approximations, not exact targets for each block: sensitivity-based allocation, integer rounding, and retained-width limits determine the actual masks. The default continuation uses the first row. Run other settings from the same first-stage checkpoint with distinct output directories:
+These are aggregate approximations, not exact targets for each block: sensitivity-based allocation, integer rounding, and retained-width limits determine the actual masks. The default continuation uses the first row. Run other settings from the same fine-tuned first-stage checkpoint with distinct output directories:
 
 ```bash
 python prune_last_blocks.py --config configs/polyp_last_blocks.json --head_sparsity 0.12 --mlp_sparsity 0.14 --output_dir outputs/polyp_last_blocks_medium
 python prune_last_blocks.py --config configs/polyp_last_blocks.json --head_sparsity 0.14 --mlp_sparsity 0.158 --output_dir outputs/polyp_last_blocks_high
+```
+
+During recovery, the distillation teacher runs on the pruning GPU by default. Use `--teacher_device cpu` to keep it on the CPU, which saves about 0.4 GB of GPU memory but makes pruning about 1.6 times slower. The two choices can select slightly different masks because GPU and CPU arithmetic round differently.
+
+### Pruning all blocks at once
+
+To prune all 12 blocks without protecting blocks 10-11, use a single cascade with no protected blocks and fine-tune once. The budgets below keep exactly as many heads and MLP channels as the three sequential settings above, so the compressed models have the same number of parameters:
+
+| Matched sequential setting | `--head_sparsity` | `--mlp_sparsity` | Kept heads / MLP channels |
+| --- | --- | --- | --- |
+| 0.10 / 0.117 | 0.7986111 | 0.9085558 | 29 / 3371 |
+| 0.12 / 0.14 | 0.8194444 | 0.9315592 | 26 / 2523 |
+| 0.14 / 0.158 | 0.8402778 | 0.9495714 | 23 / 1859 |
+
+Group counts are obtained as round(budget × total) over 144 heads and 36,864 MLP channels, so the budgets are given to seven decimals. Blocks are still allocated by sensitivity, subject to the minimum retained widths. `configs/polyp_all12.json` contains the first row; pass the other rows on the command line:
+
+```bash
+python prune.py --config configs/polyp_all12.json
+python prune.py --config configs/polyp_all12.json --head_sparsity 0.8194444 --mlp_sparsity 0.9315592 --output_dir outputs/polyp_all12_h72m84
+python prune.py --config configs/polyp_all12.json --head_sparsity 0.8402778 --mlp_sparsity 0.9495714 --output_dir outputs/polyp_all12_h84m95
+```
+
+Fine-tune, export, and evaluate each result as described below, for example:
+
+```bash
+python finetune.py --checkpoint outputs/polyp_all12_h60m70/checkpoint.pth --output_dir outputs/polyp_all12_h60m70_ft --num_epochs 20
+python export.py --checkpoint outputs/polyp_all12_h60m70_ft/checkpoint_best.pth --output outputs/polyp_all12_h60m70_compact.pth
+python evaluate.py --checkpoint outputs/polyp_all12_h60m70_compact.pth --output outputs/polyp_all12_h60m70_test.json
 ```
 
 Command-line arguments override JSON settings. Use `python <script>.py --help` for available options.
@@ -156,19 +185,30 @@ Fisher scores are estimated separately for the three datasets and combined to pr
 The shared fine-tuning, export, and evaluation entries also accept these checkpoints:
 
 ```bash
-python finetune.py --checkpoint outputs/multimodal_last_blocks/checkpoint.pth --output_dir outputs/multimodal_finetune --num_epochs 20 --use_amp
+python finetune.py --checkpoint outputs/multimodal_last_blocks/checkpoint.pth --output_dir outputs/multimodal_finetune --num_epochs 20
 python export.py --checkpoint outputs/multimodal_finetune/checkpoint_best.pth --output outputs/multimodal_compact.pth
 python evaluate.py --checkpoint outputs/multimodal_compact.pth --output outputs/multimodal_test.json
 ```
 
 ## Fine-tuning and export
 
-Optional fine-tuning uses the full training partition and selects the best checkpoint by validation loss. Either pruning checkpoint can be used:
+Fine-tuning uses the full training partition and selects the best checkpoint by validation loss. It accepts any dense masked checkpoint, for example the sequential result:
 
 ```bash
-python finetune.py --checkpoint outputs/polyp_last_blocks/checkpoint.pth --output_dir outputs/polyp_last_blocks_finetune --num_epochs 20 --use_amp
+python finetune.py --checkpoint outputs/polyp_last_blocks/checkpoint.pth --output_dir outputs/polyp_last_blocks_finetune --num_epochs 20
 python export.py --checkpoint outputs/polyp_last_blocks_finetune/checkpoint_best.pth --output outputs/polyp_last_blocks_compact.pth
 ```
+
+**Reference settings and GPU memory.** Fine-tuning uses an effective batch of 4 in full precision (no mixed precision): `--batch_size 2 --grad_accum_steps 2`, which are the defaults. Gradients of two batches of two images are accumulated, weighted by sample count, and clipped before one optimizer step; this matches a single batch of four up to floating-point rounding (relative gradient difference about 2e-6 in a check) because the loss is a per-sample mean and the model has no batch normalization. The reference settings use two images per pass because a batch of four in one pass runs out of memory on a 24 GB RTX 4090. Measured on one RTX 4090 (24 GB) with the dense masked checkpoint, which has the same size as MedSAM (training throughput counts GPU time only; with image loading, a full epoch runs at about 4.7 images/s):
+
+| `--batch_size` | `--grad_accum_steps` | Effective batch | Peak allocated | Process memory (nvidia-smi) | Training images/s |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 1 | 9.6 GB | 11.0 GB | 4.8 |
+| 2 | 1 | 2 | 17.9 GB | 19.4 GB | 5.5 |
+| **2** | **2** | **4 (reference)** | **18.2 GB** | **19.4 GB** | **5.5** |
+| 4 | 1 | 4 | out of memory in the first forward pass | > 22.3 GB | — |
+
+Memory grows by about 8.3 GB per image in a pass, so a batch of four in one pass needs roughly 35 GB. Use `--batch_size 4 --grad_accum_steps 1` on a GPU with at least 40 GB. Image loading is the next limit: one image takes about 1.25 s of CPU time to resize, so an RTX 4090 needs at least six loader processes to avoid waiting for data. All entries use 12 loader processes by default (`--num_workers 12`). On machines with fewer CPU cores, set `--num_workers` to about the number of cores minus two, and keep at least six.
 
 Fine-tuning saves `checkpoint_best.pth`, `checkpoint_latest.pth`, and `training_state.pt`. Resume with `--resume path/to/training_state.pt` and the original training settings. Dense checkpoints retain tensor shapes and masks for training; export physically removes masked dimensions and records the compact architecture. Export after all intended pruning and fine-tuning.
 

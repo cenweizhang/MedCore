@@ -33,7 +33,8 @@ def write_json(path, value):
 def add_runtime_args(parser):
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--num_workers", type=int, default=12,
+                        help="Image-loading worker processes (0 loads in the main process).")
     parser.add_argument("--eval_batch_size", type=int, default=1)
 
 

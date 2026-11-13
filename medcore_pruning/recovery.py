@@ -47,7 +47,7 @@ def recovery_finetune(model, cal_loader, device, n_steps=100, lr=1e-5,
     """Adapt the encoder with segmentation, boundary, distillation, and FFT losses.
 
     Attach structured pruning masks before calling. The prompt encoder and mask
-    decoder stay frozen. A teacher may remain on CPU to reduce GPU memory use.
+    decoder stay frozen. The teacher may run on the GPU or on the CPU to save GPU memory.
     Sampling weights follow calibration dataset order and favor complex masks.
     """
     if n_steps <= 0:
